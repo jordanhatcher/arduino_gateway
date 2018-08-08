@@ -21,7 +21,7 @@ class ArduinoNode(Node, threading.Thread):
     Acts as an interface to an arduino via serial port
     """
 
-    def __init__(self, label, state, config):
+    def __init__(self, label, state, config=None):
         """
         Constructor
         """
@@ -30,7 +30,6 @@ class ArduinoNode(Node, threading.Thread):
         threading.Thread.__init__(self, daemon=True)
 
         self.running_event = threading.Event()
-        self.state.add_states(self.label, ['running'])
 
         device = config['device']
         baud_rate = config['baud_rate']
