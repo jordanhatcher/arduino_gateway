@@ -22,7 +22,7 @@ automation system. In the config.yml file, add the following under nodes:
 
 ```yaml
 arduino_node:
-  node: arduino_gateway.arduino_node
+  node_type: arduino_gateway.arduino_node
   config:
     device: /dev/ttyUSB0
     baud_rate: 9600

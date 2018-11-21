@@ -4,17 +4,18 @@ arduino_node
 Contains the ArduinoNode class
 """
 
+import asyncio
 import logging
 import threading
-import serial
+import serial_asyncio
 from pubsub import pub
-from ....node import Node
+from node import Node
 
 LOGGER = logging.getLogger(__name__)
 
 NODE_CLASS_NAME = 'ArduinoNode'
 
-class ArduinoNode(Node, threading.Thread):
+class ArduinoNode(Node):
     """
     ArduinoNode
 
@@ -26,40 +27,24 @@ class ArduinoNode(Node, threading.Thread):
         Constructor
         """
 
-        Node.__init__(self, label, state, config)
-        threading.Thread.__init__(self, daemon=True)
+        super().__init__(label, state, config)
 
-        self.running_event = threading.Event()
+        self._device = config['device']
+        self._baud_rate = config['baud_rate']
 
-        device = config['device']
-        baud_rate = config['baud_rate']
-
-        self.serial_com = serial.Serial(device, baud_rate)
+        loop = asyncio.get_event_loop()
+        self._reader, self._writer = loop.run_until_complete(self._init_reader_writer())
+        loop.create_task(self.handler())
 
         pub.subscribe(self.send, f'{self.label}.send')
-        pub.subscribe(self.stop, f'{self.label}.stop')
-        pub.subscribe(self.start, f'{self.label}.start')
+        LOGGER.info('Initialized')
 
-        LOGGER.debug('Initialized')
-
-    def update_state(self):
+    async def _init_reader_writer(self):
         """
-        Gets the state of the node
+        Helper function to get a pyserial asyncio reader/writer pair
         """
 
-        LOGGER.info('Updating state')
-        state = {'running' : not self.running_event.is_set()}
-        self.state.update_states(self.label, **state)
-
-    def stop(self):
-        """
-        Stops the node
-        """
-
-        LOGGER.info('Stopping')
-        self.running_event.set()
-        self.update_state()
-        LOGGER.info('Stopped')
+        return await serial_asyncio.open_serial_connection(url=self._device, baudrate=self._baud_rate)
 
     def send(self, msg):
         """
@@ -70,16 +55,18 @@ class ArduinoNode(Node, threading.Thread):
         device_id = msg['device_id']
         data = msg['data']
         write_data = f'{device_code}{device_id}{data}'
-        self.serial_com.write(write_data.encode('UTF-8'))
+        LOGGER.debug(f'Sending serial data: {write_data}')
+        self._writer.write(write_data.encode('UTF-8'))
 
-    def run(self):
+    async def handler(self):
         """
-        Run loop
+        Main loop
         """
 
-        while not self.running_event.is_set():
-            serial_data = self.serial_com.readline().decode('UTF-8').strip('\n')
-            LOGGER.info(f'Received data from arduino: {serial_data}')
+        while True:
+            serial_data = await self._reader.readline()
+            msg = serial_data.decode('UTF-8').strip()
+            LOGGER.info(f'Received data from serial port: {serial_data}')
             pub.sendMessage(f'messages.{self.label}', msg={
                 'serial_data': serial_data
             })
